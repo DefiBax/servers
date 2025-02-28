@@ -71,6 +71,26 @@ const listChannelsTool: Tool = {
   },
 };
 
+const listPrivateChannelsTool: Tool = {
+  name: "slack_list_private_channels",
+  description: "List private channels in the workspace with pagination",
+  inputSchema: {
+    type: "object",
+    properties: {
+      limit: {
+        type: "number",
+        description:
+          "Maximum number of channels to return (default 100, max 200)",
+        default: 100,
+      },
+      cursor: {
+        type: "string",
+        description: "Pagination cursor for next page of results",
+      },
+    },
+  },
+};
+
 const postMessageTool: Tool = {
   name: "slack_post_message",
   description: "Post a new message to a Slack channel",
@@ -352,6 +372,35 @@ class SlackClient {
   }
 }
 
+/**
+ * Lists private channels in the workspace with pagination
+ * @param cursor Pagination cursor for next page of results
+ * @param limit Maximum number of channels to return (default 100, max 200)
+ */
+async function slack_list_private_channels(cursor?: string, limit: number = 100): Promise<any> {
+  try {
+    const client = getSlackClient(); // Assuming getSlackClient() is defined elsewhere
+
+    const result = await client.conversations.list({
+      types: 'private_channel', // Specify private channels
+      cursor: cursor,
+      limit: limit,
+    });
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    return {
+      channels: result.channels,
+      next_cursor: result.response_metadata?.next_cursor,
+    };
+  } catch (error: any) {
+    console.error('Failed to list private channels:', error);
+    throw new Error(`Failed to list private channels: ${error.message}`);
+  }
+}
+
 async function main() {
   const botToken = process.env.SLACK_BOT_TOKEN;
   const teamId = process.env.SLACK_TEAM_ID;
@@ -506,6 +555,18 @@ async function main() {
             };
           }
 
+          case "slack_list_private_channels": {
+            const args = request.params
+              .arguments as unknown as ListChannelsArgs;
+            const response = await slack_list_private_channels(
+              args.limit,
+              args.cursor,
+            );
+            return {
+              content: [{ type: "text", text: JSON.stringify(response) }],
+            };
+          }
+
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
@@ -537,6 +598,7 @@ async function main() {
         getThreadRepliesTool,
         getUsersTool,
         getUserProfileTool,
+        listPrivateChannelsTool,
       ],
     };
   });
@@ -552,3 +614,4 @@ main().catch((error) => {
   console.error("Fatal error in main():", error);
   process.exit(1);
 });
+
